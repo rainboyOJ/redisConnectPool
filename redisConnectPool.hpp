@@ -10,6 +10,7 @@
 #include <memory>
 #include <vector>
 #include <thread>
+#include <atomic>
 
 #include "redisResult.hpp"
 #include "redisConnection.hpp"
@@ -29,7 +30,13 @@ public:
         redisResult res;
         auto w_ptr = get_conn(id);
         if( auto s_ptr = w_ptr.lock() ){
-            res.Init( redisCommand(s_ptr->GetCtx(), std::forward<Args>(args)...));
+            res.Init( 
+                    static_cast<redisReply*>(
+                        redisCommand(s_ptr->GetCtx(), std::forward<Args>(args)...)
+                    )
+                    );
+
+
         }
         if( id != -1) put_conn(id);
         return res;
@@ -39,9 +46,9 @@ private:
     //保活
     void keepAlive();
     
-    int               current_conn;
+    int               current_conn{0};
     std::mutex        mtx;
-    std::thread       keepAlive_thread{nullptr}; //保活的线程
+    //std::thread       keepAlive_thread{nullptr}; //保活的线程
     std::atomic<bool> isClosed{false}; //是否关闭
     std::vector< std::shared_ptr<redisConnection> > connectPool;
     std::vector<bool> is_conn_used;
@@ -50,6 +57,10 @@ private:
 redisConnectPool::redisConnectPool(std::string_view ip,int port=6379,int connNum=4){
     for(int i=1;i<=connNum;++i){
         connectPool.push_back( std::make_shared<redisConnection>(ip,port) );
+        if( connectPool.back()->redisConnect() == false){
+            std::cerr << __FILE__ << " " << "connect redisServer failed!" << std::endl;
+            break;
+        }
         is_conn_used.push_back(false);
     }
     isClosed.store(true);
@@ -67,14 +78,18 @@ redisConnectPool::~redisConnectPool(){
 
 std::weak_ptr<redisConnection> redisConnectPool::get_conn(int &id) {
     std::lock_guard<std::mutex> lock(mtx);
-    int i = current_conn+1;
-    for( ; i < connectPool.size() ; i = ( i +1 ) % connectPool.size() ){
-        if( is_conn_used[i] == false ){
-            is_conn_used[i] = true;
-            current_conn = i;
-            return connectPool[i];
-            id = i;
+    if( connectPool.size() != 0) {
+
+        int i = (current_conn+1 ) % connectPool.size();
+        for( ; i < connectPool.size() ; i = ( i +1 ) % connectPool.size() ){
+            if( is_conn_used[i] == false ){
+                is_conn_used[i] = true;
+                current_conn = i;
+                id = i;
+                return connectPool[i];
+            }
         }
+
     }
     return std::weak_ptr<redisConnection>(); // Maby Bug
 }
