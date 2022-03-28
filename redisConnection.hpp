@@ -9,7 +9,7 @@
 
 class redisConnection {
 public:
-    explicit redisConnection(std::string_view ip,uint32_t port);
+    explicit redisConnection(std::string_view ip,uint32_t port=6379);
     ~redisConnection();
     bool redisConnect();
     bool redisReConnect();
@@ -32,6 +32,12 @@ redisConnection::redisConnection(std::string_view ip,uint32_t port)
     :mHost{ip},mPort{port}
 {}
 
+redisConnection::~redisConnection()
+{
+    if(mCtx != NULL)
+        redisFree(mCtx);
+}
+
 bool redisConnection::redisConnect(){
     bool bRet = false;
     if (NULL != mCtx) {
@@ -40,8 +46,8 @@ bool redisConnection::redisConnect(){
     }
     mCtx = ::redisConnect(mHost.c_str(), mPort);
 
-    if (NULL == mCtx) {
-        bRet = false;
+    if (NULL != mCtx) {
+        bRet = true;
     }
     mConnStatus = bRet;
     return bRet;
