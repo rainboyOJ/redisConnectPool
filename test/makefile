@@ -1,5 +1,5 @@
 CXX=g++
-CFLAGS=-g -lhiredis
+CFLAGS=-g -lhiredis -DREDIS_POOL_DEBUG
 
 SRC=$(wildcard *.cpp)
 TARGET=$(patsubst %.cpp,%,$(SRC))

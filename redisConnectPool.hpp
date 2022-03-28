@@ -28,17 +28,19 @@ public:
     auto command(Args... args){
         int id = -1;
         redisResult res;
-        auto w_ptr = get_conn(id);
-        if( auto s_ptr = w_ptr.lock() ){
-            res.Init( 
-                    static_cast<redisReply*>(
-                        redisCommand(s_ptr->GetCtx(), std::forward<Args>(args)...)
-                    )
-                    );
-
-
+        while ( 1 ) {
+            auto w_ptr = get_conn(id);
+            if( auto s_ptr = w_ptr.lock() ){
+                res.Init( 
+                        static_cast<redisReply*>(
+                            redisCommand(s_ptr->GetCtx(), std::forward<Args>(args)...)
+                            )
+                        );
+                if( id != -1) put_conn(id);
+                return  res;
+            }
         }
-        if( id != -1) put_conn(id);
+        //if( id != -1) put_conn(id);
         return res;
     }
 
@@ -78,19 +80,28 @@ redisConnectPool::~redisConnectPool(){
 
 std::weak_ptr<redisConnection> redisConnectPool::get_conn(int &id) {
     std::lock_guard<std::mutex> lock(mtx);
+#ifdef  REDIS_POOL_DEBUG
+    std::cout << "get_conn begin" << std::endl;
+#endif
     if( connectPool.size() != 0) {
 
+        int try_get_cnt = 0;
         int i = (current_conn+1 ) % connectPool.size();
         for( ; i < connectPool.size() ; i = ( i +1 ) % connectPool.size() ){
+            if(++try_get_cnt > connectPool.size() )  // 如果没有空闲的资源
+                break;
             if( is_conn_used[i] == false ){
                 is_conn_used[i] = true;
                 current_conn = i;
                 id = i;
+#ifdef  REDIS_POOL_DEBUG
+    std::cout << "get_conn end : id = "  << id << std::endl;
+#endif
                 return connectPool[i];
             }
         }
-
     }
+    //一个空的weak_ptr
     return std::weak_ptr<redisConnection>(); // Maby Bug
 }
 

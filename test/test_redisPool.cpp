@@ -25,6 +25,7 @@ int main(){
     for(int i = 1 ;i<=10 ;i++){
         vec.emplace_back([i,&red_pool](){
             {
+                std::cout << "go in thread : " << std::this_thread::get_id() << std::endl;
                 auto res = red_pool.command("set ID %d",i);
                 if(res.is_string()) {
                     std::cout << "yes result is string" << std::endl;
@@ -34,7 +35,7 @@ int main(){
                     std::cout << "result is int : " << res.integer() << std::endl;
                 }
             }
-            std::cout << "thread end" << std::endl;
+            std::cout << "thread end : "<< std::this_thread::get_id() << std::endl;
 
         });
     }
