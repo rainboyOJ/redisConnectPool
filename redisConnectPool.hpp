@@ -80,8 +80,7 @@ public:
      * @desc 创建一个列表并添加元素
      */
     template<typename T>
-    void RPUSH(std::string_view key,T&& value);
-
+    void RPUSH(std::string_view key,T&& value,int count = 1);
 
     /**
      * @desc 获取list里的元素
@@ -91,6 +90,12 @@ public:
 
     template<typename T>
     std::vector<T> ALL_LRANGE(std::string_view key){ return LRANGE<T>(key, 0, -1); }
+
+    /**
+     * @desc 修改列表中的某个值
+     */
+    template<typename T>
+    void LSET(std::string_view key,int index,T&& value);
 
 private:
     //保活
@@ -204,9 +209,14 @@ void redisConnectPool::DEL(const char * key){
 }
 
 template<typename T>
-void redisConnectPool::RPUSH(std::string_view key,T&& value){
+void redisConnectPool::RPUSH(std::string_view key,T&& value,int count){
     std::ostringstream oss;
-    oss << "RPUSH " << key << " " << value;
+    oss << "RPUSH " << key << " ";
+    oss << '"' << value << '"';
+    for(int i=1;i<count;++i){
+        oss << ' ' << '"' << value << '"';
+    }
+
     command(oss.str().c_str());
 }
 
@@ -260,5 +270,13 @@ void redisConnectPool::APPEND(std::string_view key,std::string_view value,char s
 void redisConnectPool::EXPIRE(std::string_view key,std::size_t expire) {
     std::ostringstream oss;
     oss << "EXPIRE " << key << " " << expire;
+    command(oss.str().c_str());
+}
+
+template<typename T>
+void redisConnectPool::LSET(std::string_view key,int index,T&& value){
+    std::ostringstream oss;
+    oss << "LSET ";
+    oss << key << " " << index << " " <<  value;
     command(oss.str().c_str());
 }
