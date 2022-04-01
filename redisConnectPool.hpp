@@ -11,6 +11,7 @@
 #include <vector>
 #include <thread>
 #include <atomic>
+#include <sstream>
 
 #include "redisResult.hpp"
 #include "redisConnection.hpp"
@@ -25,7 +26,7 @@ public:
     void put_conn(int id) ;
 
     template<typename... Args>
-    auto command(Args... args){
+    redisResult command(Args... args){
         int id = -1;
         redisResult res;
         while ( 1 ) {
@@ -43,6 +44,53 @@ public:
         //if( id != -1) put_conn(id);
         return res;
     }
+
+    // ================= API =================
+    /**
+     * @desc 是否存在某个值
+     */
+    bool isExitsKey(std::string_view key);
+
+    void EXPIRE(std::string_view key,std::size_t expire= 60);
+
+    /**
+     * @desc 设定key 与 过期时间
+     */
+    template<typename T>
+    void SETEX(std::string_view key,T&& value,std::size_t expire= 60);
+
+    /**
+     * @desc 追加字符串
+     */
+    void APPEND(std::string_view key,std::string_view value,char split=0,std::size_t expire= 60);
+
+    /**
+     * @得到一个指定类型的key值
+     */
+    template<typename T>
+    T GET(std::string_view key);
+
+    /**
+     * @删除
+     */
+
+    void DEL(const char * key);
+    
+    /**
+     * @desc 创建一个列表并添加元素
+     */
+    template<typename T>
+    void RPUSH(std::string_view key,T&& value);
+
+
+    /**
+     * @desc 获取list里的元素
+     */
+    template<typename T>
+    std::vector<T> LRANGE(std::string_view key,int start,int end);
+
+    template<typename T>
+    std::vector<T> ALL_LRANGE(std::string_view key){ return LRANGE<T>(key, 0, -1); }
 
 private:
     //保活
@@ -119,4 +167,98 @@ void redisConnectPool::keepAlive(){
             }
         }
     }
+}
+
+template<typename T>
+void redisConnectPool::SETEX(std::string_view key,T&& value,std::size_t expire){
+    std::ostringstream oss;
+    oss << "SETEX " << key << " " << expire <<  " " << value ;
+    redisResult result = command(oss.str().c_str());
+}
+
+template<typename T>
+T redisConnectPool::GET(std::string_view key){
+    std::ostringstream oss;
+    oss << "GET " << key ;
+    redisResult result = command(oss.str().c_str());
+    if constexpr (std::is_same_v<T, int>){
+        if (result.is_integer())
+            return  result.integer();
+        else if ( result.is_string() )
+            return std::stoi(result.str());
+        return -1; //unkown
+    }
+
+    if constexpr (std::is_same_v<T, std::string>){
+        if ( result.is_string() )
+            return result.str();
+        //else if ( result.is_nil())
+            //std::cout << "null" << std::endl ;
+        return ""; // null
+    }
+    throw "unsport type";
+}
+
+void redisConnectPool::DEL(const char * key){
+    command("DEL %s",key);
+}
+
+template<typename T>
+void redisConnectPool::RPUSH(std::string_view key,T&& value){
+    std::ostringstream oss;
+    oss << "RPUSH " << key << " " << value;
+    command(oss.str().c_str());
+}
+
+template<typename T>
+std::vector<T>
+redisConnectPool::LRANGE(std::string_view key,int start,int end) {
+    std::ostringstream oss;
+    oss << "LRANGE " << key << " ";
+    oss << start << " "<< end;
+
+    redisResult result = command(oss.str().c_str());
+
+    if ( result.is_nil() )
+        return {};
+
+    if constexpr ( std::is_same_v<T, std::string>)
+    {
+        std::vector<T> ret;
+        for(int i =0 ;i< result.elements() ; ++i){
+            auto Reply = result.element(i);
+            ret.push_back(Reply->str);
+        }
+        return  ret;
+    }
+
+    throw "unsport type";
+}
+
+bool redisConnectPool::isExitsKey(std::string_view key){
+    std::ostringstream oss;
+    oss<< "EXISTS " << key ;
+    redisResult result = command(oss.str().c_str());
+    return !result.is_nil() && (result.is_integer() && result.integer() == 1) ;
+}
+
+void redisConnectPool::APPEND(std::string_view key,std::string_view value,char split,std::size_t expire){
+    //先设置 过期时间
+    if( expire > 0) {
+        std::ostringstream oss;
+        oss << "EXPIRE " << key << " " << expire;
+        command(oss.str().c_str());
+    }
+
+    std::ostringstream oss;
+    oss << "APPEND " << key <<" ";
+    if( split != 0) oss << split;
+    oss << value;
+    command(oss.str().c_str());
+}
+
+void redisConnectPool::EXPIRE(std::string_view key,std::size_t expire) {
+    std::ostringstream oss;
+    oss << "EXPIRE " << key << " " << expire;
+    command(oss.str().c_str());
 }
